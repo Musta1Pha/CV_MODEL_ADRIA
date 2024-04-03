@@ -18,7 +18,7 @@ percentage_existence = (keyword_count / len(keywords)) * 100
 
 # Utiliser des expressions régulières pour extraire les informations pertinentes
 matches_formation = re.search(r'\bformations?\b.*?(\d{4})', cv_text, re.IGNORECASE)
-years_formation = [int(match) for match in re.findall(r'\b\d{4}\b', matches_formation.group())]
+years_formation = [int(year) for year in re.findall(r'\b\d{4}\b', matches_formation.group())] if matches_formation else []
 Formation = years_formation[-1] - years_formation[-2] if len(years_formation) >= 2 else 0
 
 matches_experience = re.findall(r'\((\d+)\s*(?:mois|ans|jours)', cv_text)
