@@ -1,34 +1,55 @@
 import re
 import sys
 
+from pdfplumber import open
+import spacy
+
 pdf_path, keywords_input, Formation_Demandee, Experience_Demandee = sys.argv[1:5]
 
-# Ouvrir le fichier PDF et extraire le texte
-with open(pdf_path, "rb") as pdf_file:
-    cv_text = pdf_file.read().decode("utf-8", "ignore")
+with open(pdf_path) as pdf:
+    cv_text = ""
+    for page in pdf.pages:
+        cv_text += page.extract_text()
 
-# Convertir les mots-clés en une liste de mots en minuscules
 keywords = [keyword.strip().lower() for keyword in keywords_input.split(",")]
 
+nlp = spacy.load("fr_core_news_sm")
+doc = nlp(cv_text)
+
 # Compter le nombre de mots-clés présents dans le texte du CV
-keyword_count = sum(keyword in cv_text.lower() for keyword in keywords)
+keyword_count = sum(1 for keyword in keywords if re.search(r'\b{}\b'.format(re.escape(keyword)), cv_text.lower()))
 
 # Calculer le pourcentage d'existence des mots-clés
 percentage_existence = (keyword_count / len(keywords)) * 100
 
 # Utiliser des expressions régulières pour extraire les informations pertinentes
-matches_formation = re.search(r'\bformations?\b.*?(\d{4})', cv_text, re.IGNORECASE)
-years_formation = [int(year) for year in re.findall(r'\b\d{4}\b', matches_formation.group())] if matches_formation else []
-Formation = years_formation[-1] - years_formation[-2] if len(years_formation) >= 2 else 0
+pattern_formation = r'(formations?)[\s\S]*?(\b\d{4}\b)[\s\S]*?(expériences?|experiences?)'
+matches_formation = re.search(pattern_formation, cv_text, re.IGNORECASE)
 
-matches_experience = re.findall(r'\((\d+)\s*(?:mois|ans|jours)', cv_text)
-total_days = sum(int(match) * (30 if 'mois' in match else 365 if 'ans' in match else 1) for match in matches_experience)
+if matches_formation:
+    years_formation = re.findall(r'\b\d{4}\b', matches_formation.group())
+    Formation = int(years_formation[-1]) - int(years_formation[-2]) if len(years_formation) >= 2 else 0
+else:
+    Formation = 0
 
-matches_telephone = re.findall(r'(?:\+|0[67])\d{0,3}[\s\d\(\)\-\+]{7,}\d\b', cv_text)
-correspondances_telephone = ' '.join(matches_telephone) if matches_telephone else ''
+pattern_experience = r'\((\d+)\s*(mois|ans|jours)(?:\s*et\s*(\d+)\s*jours)?'
+matches_experience = re.findall(pattern_experience, cv_text)
 
-Final_percentage = percentage_existence + round(min((total_days * 300) / float(Experience_Demandee), 300), 2)
-Final_percentage += 400 if f"Bac+{Formation}" == Formation_Demandee.lower() else 0
+total_days = sum(
+    int(duree) * (30 if unite == 'mois' else 365 if unite == 'ans' else 1) for duree, unite, _ in matches_experience
+)
+
+modele_telephone = r'(?:\+|0[67])\d{0,3}[\s\d\(\)\-\+]*\d[\s\d\(\)\-\+]*\d[\s\d\(\)\-\+]*\d[\s\d\(\)\-\+]*\d[\s\d\(\)\-\+]*\d[\s\d\(\)\-\+]*\d[\s\d\(\)\-\+]*\d\b'
+correspondances_telephone = re.findall(modele_telephone, cv_text)
+
+# Calcul du pourcentage final
+Final_percentage = percentage_existence
+Formation_search = f"Bac+{Formation}"
+
+if Formation_search.lower() == Formation_Demandee.lower():
+    Final_percentage += 400
+
+Final_percentage += round(min((total_days * 300) / float(Experience_Demandee), 300), 2)
 
 # Afficher le pourcentage final
 print(round(Final_percentage / 8, 2))
